@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mathematicians Around the World</title>
+  <style>
+    :root { --bg:#f7f7fb; --card:#fff; --text:#1f2937; --muted:#6b7280; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }
+    h1 { margin: 0 0 6px; font-size: 28px; }
+    p.sub { margin: 0 0 16px; color: var(--muted); }
+    .search { width: 100%; max-width: 420px; padding: 10px 14px; border: 1px solid #d1d5db; border-radius: 12px; outline: none; }
+    .grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:14px; margin-top:12px; }
+    @media (min-width: 640px){ .grid{ grid-template-columns: repeat(3, minmax(0,1fr)); } }
+    @media (min-width: 1024px){ .grid{ grid-template-columns: repeat(5, minmax(0,1fr)); } }
+
+    /* Card + "flip" (with explicit front/back visibility control) */
+    .cardbtn { position: relative; width: 100%; aspect-ratio: 3/4; perspective: 1200px; border: 0; background: transparent; padding: 0; cursor: pointer; }
+    .flipper {
+      position: relative; width: 100%; height: 100%;
+      transform-style: preserve-3d; -webkit-transform-style: preserve-3d;
+      transition: transform .55s;
+      border-radius: 18px; overflow: hidden;
+      box-shadow: 0 10px 24px rgba(0,0,0,.08);
+    }
+    .panel { position:absolute; inset:0; }
+    .front { transform: rotateY(0deg); background:#e5e7eb; }
+    .front img { width:100%; height:100%; object-fit:cover; display:block; filter: brightness(0.94) contrast(1.02); }
+    .front .label { position:absolute; left:0; right:0; bottom:0; background: rgba(0,0,0,.45); color:#fff; text-align:center; font-weight:700; padding:8px 10px; letter-spacing:.2px; }
+
+    .back { transform: rotateY(180deg); background:#fff; padding:14px; display:grid; grid-template-rows:auto auto 1fr auto; gap:8px; }
+
+    /* Robust visibility toggle to avoid mirrored text issues */
+    .flipper .front { opacity:1; visibility:visible; transition: opacity .35s; }
+    .flipper .back  { opacity:0; visibility:hidden; transition: opacity .35s; }
+    .flipper.do-flip { transform: rotateY(180deg); }
+    .flipper.do-flip .front { opacity:0; visibility:hidden; }
+    .flipper.do-flip .back  { opacity:1; visibility:visible; }
+
+    .loading { display:grid; place-items:center; height:100%; background: linear-gradient(135deg,#e5e7eb,#d1d5db); color:#374151; font-size: 14px; }
+    .name { text-align:center; font-weight:800; font-size:18px; }
+    .life { text-align:center; color:#6b7280; font-size:12px; }
+    .meta { font-size:14px; line-height:1.35; }
+    .meta b { font-weight:700; }
+    .hint { text-align:center; color:#9ca3af; font-size:11px; }
+
+    footer { margin-top: 20px; color:#6b7280; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Mathematicians Around the World</h1>
+    <p class="sub">Click a card to learn more</p>
+
+    <input id="q" class="search" placeholder="Search by name, country, or contribution…" />
+    <div id="grid" class="grid" aria-live="polite"></div>
+
+    <footer>Images are automatically fetched from Wikipedia &amp; Wikidata at runtime (with optional local overrides) and are subject to Wikimedia Commons licenses.</footer>
+  </div>
+
+  <script>
+    const IMAGE_OVERRIDES = {
+      "Maryam Mirzakhani": "https://i.imgur.com/llxAVij.png",
+      "Ruth Gonzalez": "https://i.imgur.com/9X94qnc.png"
+    };
+
+    const PEOPLE = [
+      { n:"Euclid", w:"Euclid", l:"c. 300 BCE", c:"Greek (Hellenistic Egypt)", a:"Elements; axiomatic geometry foundation." },
+      { n:"Archimedes", w:"Archimedes", l:"c. 287–212 BCE", c:"Greek (Syracuse)", a:"Principle of buoyancy; lever; early calculus methods." },
+      { n:"Hypatia", w:"Hypatia", alt:["Hypatia of Alexandria"], l:"c. 360–415 CE", c:"Greek (Alexandria)", a:"Teacher of mathematics & astronomy; commentaries on classical works." },
+      { n:"Al-Khwarizmi", w:"Muhammad ibn Musa al-Khwarizmi", alt:["Al-Khwarizmi"], l:"c. 780–850 CE", c:"Persian (House of Wisdom, Baghdad)", a:"Foundational work in algebra; popularized Hindu–Arabic numerals." },
+      { n:"Isaac Newton", w:"Isaac Newton", l:"1642–1727", c:"English", a:"Calculus (with Leibniz); laws of motion & gravitation." },
+      { n:"Leonhard Euler", w:"Leonhard Euler", l:"1707–1783", c:"Swiss", a:"Analysis, graph theory, and modern mathematical notation." },
+      { n:"Carl Friedrich Gauss", w:"Carl Friedrich Gauss", l:"1777–1855", c:"German", a:"Number theory, statistics (normal distribution), electromagnetism." },
+      { n:"Sophie Germain", w:"Sophie Germain", l:"1776–1831", c:"French", a:"Number theory (Germain primes); elasticity theory." },
+      { n:"Ada Lovelace", w:"Ada Lovelace", l:"1815–1852", c:"English", a:"Analytical Engine notes; early algorithmic thinking." },
+      { n:"Sofia Kovalevskaya", w:"Sofya Kovalevskaya", alt:["Sofia Kovalevskaya","Sofya Kovalevskaya"], l:"1850–1891", c:"Russian", a:"PDEs; first woman full professor of math in Europe." },
+      { n:"Emmy Noether", w:"Emmy Noether", l:"1882–1935", c:"German", a:"Abstract algebra; Noether's theorem linking symmetries & conservation laws." },
+      { n:"Srinivasa Ramanujan", w:"Srinivasa Ramanujan", l:"1887–1920", c:"Indian", a:"Number theory, partitions, modular forms." },
+      { n:"Marjorie Lee Browne", w:"Marjorie Lee Browne", l:"1914–1979", c:"American", a:"Among first African-American women with a math PhD; algebra & education leader." },
+      { n:"Katherine Johnson", w:"Katherine Johnson", l:"1918–2020", c:"American", a:"NASA orbital mechanics; crewed spaceflight trajectories." },
+      { n:"Gladys West", w:"Gladys West", l:"1930– ", c:"American", a:"Geodetic modeling foundational to GPS accuracy." },
+      { n:"Maryam Mirzakhani", w:"Maryam Mirzakhani", alt:["Maryam Mirzākhānī"], l:"1977–2017", c:"Iranian", a:"Fields Medalist; geometry & dynamics of Riemann surfaces." },
+      { n:"Elbert Frank Cox", w:"Elbert Frank Cox", l:"1895–1969", c:"American", a:"First African-American to earn a PhD in mathematics." },
+      { n:"David Blackwell", w:"David Blackwell", alt:["David Blackwell (statistician)"], l:"1919–2010", c:"American", a:"Game theory & statistics; Rao–Blackwell theorem; first Black NAS member." },
+      { n:"Benoit Mandelbrot", w:"Benoit Mandelbrot", l:"1924–2010", c:"Polish-French-American", a:"Fractal geometry; self-similarity across scales." },
+      { n:"Terence Tao", w:"Terence Tao", l:"1975– ", c:"Australian-American", a:"Fields Medalist; PDEs, additive combinatorics, harmonic analysis." },
+      { n:"Manjul Bhargava", w:"Manjul Bhargava", l:"1974– ", c:"Canadian-American (Indian heritage)", a:"Fields Medalist; number theory; composition laws for forms." },
+      { n:"Benjamin Banneker", w:"Benjamin Banneker", l:"1731–1806", c:"American", a:"Almanacs, astronomy, surveying; civil rights advocacy." },
+      { n:"Julia Robinson", w:"Julia Robinson", l:"1919–1985", c:"American", a:"Advances toward Hilbert’s Tenth Problem; decision problems." },
+      { n:"Mary G. Ross", w:"Mary G. Ross", l:"1908–2008", c:"American (Cherokee Nation)", a:"Trailblazing Native American engineer; aerospace math/design." },
+      { n:"Andrew Wiles", w:"Andrew Wiles", l:"1953– ", c:"British", a:"Proof of Fermat’s Last Theorem." },
+      { n:"Shiing-Shen Chern", w:"Shiing-Shen Chern", l:"1911–2004", c:"Chinese-American", a:"Differential geometry; Chern classes/Weil theory." },
+      { n:"Shing-Tung Yau", w:"Shing-Tung Yau", l:"1949– ", c:"Chinese-American", a:"Fields Medalist; proof of the Calabi conjecture; Calabi–Yau manifolds." },
+      { n:"Ruth Gonzalez", w:"Ruth Gonzalez (mathematician)", alt:["Ruth Gonzalez","Ruth González (mathematician)","Ruth M. Gonzalez"], l:"1958–2003", c:"American (Latina)", a:"Among the first U.S.-born Latinas with a math PhD; applied math in energy industry." },
+      { n:"Alberto Calderón", w:"Alberto Calderón", alt:["Alberto P. Calderón"], l:"1920–1998", c:"Argentine", a:"Harmonic analysis; Calderón–Zygmund theory & singular integrals." },
+      { n:"Brahmagupta", w:"Brahmagupta", l:"c. 598–c. 668", c:"Indian", a:"Rules for zero/negatives; geometry; Brahmagupta’s formula." }
+    ];
+
+    const rmDiacritics = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+    const stripParens = t => t.includes("(") ? t.split("(")[0].trim() : t;
+    const uniq = a => [...new Set(a.filter(Boolean))];
+
+    async function fetchSummary(t){
+      const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(t)}`;
+      const r = await fetch(url); if(!r.ok) return {img:null,qid:null};
+      const d = await r.json();
+      return { img: d.originalimage?.source || d.thumbnail?.source || null, qid: d.wikibase_item || null };
+    }
+    async function fetchAction(t){
+      const url = `https://en.wikipedia.org/w/api.php?action=query&origin=*&prop=pageimages|pageprops&format=json&piprop=original|thumbnail&pithumbsize=800&titles=${encodeURIComponent(t)}`;
+      const r = await fetch(url); if(!r.ok) return {img:null,qid:null};
+      const d = await r.json(), pages = d?.query?.pages||{}, page = Object.values(pages)[0]||{};
+      return { img: page?.original?.source || page?.thumbnail?.source || null, qid: page?.pageprops?.wikibase_item || null };
+    }
+    async function fetchWikidataP18(qid){
+      if(!qid) return null;
+      try{
+        const url = `https://www.wikidata.org/w/api.php?action=wbgetclaims&origin=*&format=json&entity=${encodeURIComponent(qid)}&property=P18`;
+        const r = await fetch(url); if(!r.ok) return null;
+        const d = await r.json(); const fn = d?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+        return fn ? `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(fn)}?width=800` : null;
+      }catch{return null;}
+    }
+    async function getImage(person){
+      const override = IMAGE_OVERRIDES[person.n];
+      if(override) return override;
+
+      const cand = uniq([person.w, ...(person.alt||[]), stripParens(person.w), ...(person.alt||[]).map(stripParens)]);
+      for(const t of cand){
+        const a = await fetchSummary(t);
+        if(a.img) return a.img;
+        if(a.qid){ const wd = await fetchWikidataP18(a.qid); if(wd) return wd; }
+      }
+      for(const t of cand){
+        const a = await fetchAction(t);
+        if(a.img) return a.img;
+        if(a.qid){ const wd = await fetchWikidataP18(a.qid); if(wd) return wd; }
+        const t2 = rmDiacritics(t);
+        if(t2 !== t){
+          const b = await fetchSummary(t2);
+          if(b.img) return b.img;
+          if(b.qid){ const wd2 = await fetchWikidataP18(b.qid); if(wd2) return wd2; }
+        }
+      }
+      return null;
+    }
+
+    const grid = document.getElementById("grid");
+    const input = document.getElementById("q");
+
+    function render(list, images){
+      grid.innerHTML = "";
+      list.forEach(p=>{
+        const btn = document.createElement("button"); btn.className="cardbtn"; btn.setAttribute("aria-label", p.n+" card");
+        const flipper = document.createElement("div"); flipper.className="flipper";
+
+        const front = document.createElement("div"); front.className="panel front";
+        if(images[p.w]){
+          const img = document.createElement("img"); img.src = images[p.w]; img.alt = p.n;
+          front.appendChild(img);
+        } else {
+          const load = document.createElement("div"); load.className="loading"; load.textContent = "Image loading…";
+          front.appendChild(load);
+        }
+        const label = document.createElement("div"); label.className="label"; label.textContent = p.n;
+        front.appendChild(label);
+
+        const back = document.createElement("div"); back.className="panel back";
+        back.innerHTML = `
+          <div class="name">${p.n}</div>
+          <div class="life">${p.l}</div>
+          <div class="meta">
+            <p><b>Country/Nationality:</b> ${p.c}</p>
+            <p><b>Contribution:</b> ${p.a}</p>
+          </div>
+          <div class="hint">Click to flip back</div>
+        `;
+
+        btn.addEventListener("click", ()=> flipper.classList.toggle("do-flip"));
+        flipper.append(front, back);
+        btn.appendChild(flipper);
+        grid.appendChild(btn);
+      });
+    }
+
+    let IMAGES = {};
+    render(PEOPLE, IMAGES);
+
+    (async ()=>{
+      const entries = await Promise.all(PEOPLE.map(async p=>{
+        const url = await getImage(p);
+        return [p.w, url];
+      }));
+      IMAGES = Object.fromEntries(entries);
+      applyFilter();
+    })();
+
+    function applyFilter(){
+      const q = (input.value||"").trim().toLowerCase();
+      const list = !q ? PEOPLE : PEOPLE.filter(p => [p.n,p.c,p.a].some(x=>x.toLowerCase().includes(q)));
+      render(list, IMAGES);
+    }
+    input.addEventListener("input", applyFilter);
+  </script>
+</body>
+</html>
